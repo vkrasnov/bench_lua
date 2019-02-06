@@ -7,7 +7,7 @@ endif
 all: LuaJIT/Makefile
 	cd ./LuaJIT && make -j
 	$(CC) main.c -O3 -c -o main.o -I ./LuaJIT/src
-	$(CC) main.o -lpthread -lm ${argp} -ldl ./LuaJIT/src/libluajit.a -o bench
+	$(CC) main.o -lpthread ${argp} ./LuaJIT/src/libluajit.a -lm -ldl -o bench
 
 LuaJIT/Makefile:
 	git submodule update --init --recursive
