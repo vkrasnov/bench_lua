@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <argp.h>
+#include <sys/param.h>
 
 #include "lua.h"
 #include "lualib.h"
@@ -17,14 +18,19 @@
 typedef struct {
 	uint64_t  ctr;
 	char     *file;
-	double    start_ns;
+	uint64_t  start_ns;
+	uint64_t  end_ns;
 } lua_task;
 
 void *wrapper(void *arg) {
 	lua_task *task = (lua_task*)arg;
+	struct timespec start_time;
 	struct timespec cur_time;
-	double start_time_ns = task->start_ns;
 	uint64_t ctr = 0;
+
+	clock_gettime(CLOCK_MONOTONIC, &start_time);
+	uint64_t start_time_ns = start_time.tv_sec * 1e9 +  start_time.tv_nsec;
+	uint64_t cur_time_ns = start_time_ns;
 
 	lua_State *L;
 	L = luaL_newstate();
@@ -38,10 +44,11 @@ void *wrapper(void *arg) {
 
         int cb_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
+
 	do {
 		clock_gettime(CLOCK_MONOTONIC, &cur_time);
 
-		double cur_time_ns = cur_time.tv_sec * 1e9 + cur_time.tv_nsec;
+		cur_time_ns = cur_time.tv_sec * 1e9 + cur_time.tv_nsec;
 		if (start_time_ns + 10 * 1e9 < cur_time_ns) {
 			break;
 		}
@@ -58,6 +65,8 @@ void *wrapper(void *arg) {
 	} while(1);
 
 	task->ctr = ctr;
+	task->start_ns = start_time_ns;
+	task->end_ns = cur_time_ns;
 
 	return NULL;
 }
@@ -122,7 +131,6 @@ int main(int argc, char *argv[]) {
     	size_t len;
     	struct stat s;
 	uint64_t total = 0;
-	struct timespec start_time;
 
   	cmd_line_options arguments = (cmd_line_options){.file_name = "", .q = 8, .c = 1};
   	argp_parse (&argp, argc, argv, 0, 0, &arguments);
@@ -131,19 +139,30 @@ int main(int argc, char *argv[]) {
 	threads = malloc(nthreads * sizeof(pthread_t));
 	tasks = malloc(nthreads * sizeof(lua_task));
 
-	clock_gettime(CLOCK_MONOTONIC, &start_time);
-	double start_time_ns = start_time.tv_sec * 1e9 +  start_time.tv_nsec;
-
 	for (i = 0; i < nthreads; i++) {
-		tasks[i] = (lua_task){.file = arguments.file_name, .start_ns = start_time_ns};
+		tasks[i] = (lua_task){.file = arguments.file_name};
 		pthread_create(&threads[i], NULL, wrapper, &tasks[i]);
 	}
+
+	uint64_t start_time_ns = 0;
+	uint64_t end_time_ns = 0;
 
   	for (i = 0; i < nthreads; i++) {
     		pthread_join(threads[i], NULL);
 		total += tasks[i].ctr;
+		/* Select the earliest starting time and the latest end time. */
+		if (start_time_ns == 0) {
+			start_time_ns = tasks[i].start_ns;
+			end_time_ns = tasks[i].end_ns;
+		}
+		else {
+			start_time_ns = MIN (start_time_ns, tasks[i].start_ns);
+			end_time_ns = MAX (end_time_ns, tasks[i].end_ns);
+		}
   	}
 
+	uint64_t duration = end_time_ns - start_time_ns;
+
 	fprintf(stderr, "Total times executed: %"PRId64"\n", total);
-	fprintf(stdout, "ops/s %.2f\n", (double)total / 10);
+	fprintf(stdout, "ops/s %.4f\n", (double)total * 1e9 / duration);
 }
