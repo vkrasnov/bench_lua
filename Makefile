@@ -24,3 +24,7 @@ distclean:
 	rm -rf LuaJIT
 	mkdir LuaJIT
 	rm bench main.o
+
+run: bench
+	@echo "<benchmark>:<total runs>:<ops/s>"
+	@ls *.lua | while read f; do echo -n "$$f:"; ./bench $$f; done

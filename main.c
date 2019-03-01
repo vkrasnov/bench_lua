@@ -204,8 +204,7 @@ int main(int argc, char *argv[]) {
 
 	uint64_t duration = end_time_ns - start_time_ns;
 
-	fprintf(stderr, "Total times executed: %"PRId64"\n", total);
-	fprintf(stdout, "ops/s %.4f\n", (double)total * 1e9 / duration);
+	printf("%"PRId64":%.4f\n", total, (double) total * 1e9 / duration);
 
 	return 0;
 }
