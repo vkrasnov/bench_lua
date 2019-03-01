@@ -23,6 +23,11 @@ typedef struct {
 	uint64_t  end_ns;
 } lua_task;
 
+/* Benchmark execution duration in seconds. */
+#ifndef BENCH_DURATION
+# define BENCH_DURATION 10
+#endif
+
 void *wrapper(void *arg) {
 	lua_task *task = (lua_task*)arg;
 	struct timespec start_time;
@@ -61,7 +66,7 @@ void *wrapper(void *arg) {
 
 
 		cur_time_ns = cur_time.tv_sec * 1e9 + cur_time.tv_nsec;
-		if (start_time_ns + 10 * 1e9 < cur_time_ns) {
+		if (start_time_ns + BENCH_DURATION * 1e9 < cur_time_ns) {
 			break;
 		}
 
