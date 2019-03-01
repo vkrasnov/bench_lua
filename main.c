@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <argp.h>
 #include <sys/param.h>
+#include <string.h>
 
 #include "lua.h"
 #include "lualib.h"
@@ -28,7 +29,13 @@ void *wrapper(void *arg) {
 	struct timespec cur_time;
 	uint64_t ctr = 0;
 
-	clock_gettime(CLOCK_MONOTONIC, &start_time);
+	int status = clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+	if (status != 0) {
+		fprintf(stderr, "clock_gettime failed: %s\n", strerror (errno));
+		exit(1);
+	}
+
 	uint64_t start_time_ns = start_time.tv_sec * 1e9 +  start_time.tv_nsec;
 	uint64_t cur_time_ns = start_time_ns;
 
@@ -36,17 +43,22 @@ void *wrapper(void *arg) {
 	L = luaL_newstate();
 	luaL_openlibs(L);
 
-	int status = luaL_loadfile(L, task->file);
-    	if (status) {
-        	fprintf(stderr, "Couldn't load file: %s\n", lua_tostring(L, -1));
-        	exit(1);
-    	}
+	status = luaL_loadfile(L, task->file);
+	if (status) {
+		fprintf(stderr, "Couldn't load file: %s\n", lua_tostring(L, -1));
+		exit(1);
+	}
 
         int cb_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 
 	do {
-		clock_gettime(CLOCK_MONOTONIC, &cur_time);
+		status = clock_gettime(CLOCK_MONOTONIC, &cur_time);
+		if (status != 0) {
+			fprintf(stderr, "clock_gettime failed: %s\n", strerror (errno));
+			exit(1);
+		}
+
 
 		cur_time_ns = cur_time.tv_sec * 1e9 + cur_time.tv_nsec;
 		if (start_time_ns + 10 * 1e9 < cur_time_ns) {
@@ -133,22 +145,46 @@ int main(int argc, char *argv[]) {
 	uint64_t total = 0;
 
   	cmd_line_options arguments = (cmd_line_options){.file_name = "", .q = 8, .c = 1};
-  	argp_parse (&argp, argc, argv, 0, 0, &arguments);
+	int ret = argp_parse (&argp, argc, argv, 0, 0, &arguments);
+
+	if (ret != 0) {
+		fprintf (stderr, "Unexpected error while parsing command line arguments: %s\n",
+			 strerror (ret));
+		return 1;
+	}
 	
 	int nthreads = arguments.c;
 	threads = malloc(nthreads * sizeof(pthread_t));
 	tasks = malloc(nthreads * sizeof(lua_task));
 
+	if (threads == NULL || tasks == NULL) {
+		fprintf(stderr, "Unable to allocate memory: %s\n", strerror (errno));
+		return 2;
+	}
+
 	for (i = 0; i < nthreads; i++) {
 		tasks[i] = (lua_task){.file = arguments.file_name};
-		pthread_create(&threads[i], NULL, wrapper, &tasks[i]);
+		int ret = pthread_create(&threads[i], NULL, wrapper, &tasks[i]);
+
+		if (ret != 0) {
+			fprintf (stderr, "Cannot create thread(%d): %s\n", i,
+				 strerror (errno));
+			return 3;
+		}
 	}
 
 	uint64_t start_time_ns = 0;
 	uint64_t end_time_ns = 0;
 
   	for (i = 0; i < nthreads; i++) {
-    		pthread_join(threads[i], NULL);
+		int ret = pthread_join(threads[i], NULL);
+
+		if (ret != 0) {
+			fprintf (stderr, "Thread join failed(%d): %s\n", i,
+				 strerror (errno));
+			return 4;
+		}
+
 		total += tasks[i].ctr;
 		/* Select the earliest starting time and the latest end time. */
 		if (start_time_ns == 0) {
@@ -165,4 +201,6 @@ int main(int argc, char *argv[]) {
 
 	fprintf(stderr, "Total times executed: %"PRId64"\n", total);
 	fprintf(stdout, "ops/s %.4f\n", (double)total * 1e9 / duration);
+
+	return 0;
 }
