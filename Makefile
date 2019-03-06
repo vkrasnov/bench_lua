@@ -8,16 +8,23 @@ ifdef BENCH_DURATION
 	DURATION = -DBENCH_DURATION=$(BENCH_DURATION)
 endif
 
-all: LuaJIT/Makefile
-	cd ./LuaJIT && make -j
-	$(CC) main.c $(DURATION) -O3 -c -o main.o -I ./LuaJIT/src
-	$(CC) main.o -lpthread ${argp} ./LuaJIT/src/libluajit.a -lm -ldl -o bench
+ifndef LUAJIT_PATH
+	LUAJIT_PATH = ./LuaJIT
+endif
+
+LUAJIT_A = $(LUAJIT_PATH)/src/libluajit.a
+
+all: $(LUAJIT_PATH)/src/libluajit.a
+	$(CC) main.c $(DURATION) -O3 -c -o main.o -I $(LUAJIT_PATH)/src
+	$(CC) main.o -lpthread ${argp} $^ -lm -ldl -o bench
+
+$(LUAJIT_A): $(LUAJIT_PATH)/Makefile
+	make -C $(LUAJIT_PATH) -j
 
 LuaJIT/Makefile:
 	git submodule update --init --recursive
 
 clean:
-	cd ./LuaJIT && make clean
 	rm bench main.o
 
 distclean:
