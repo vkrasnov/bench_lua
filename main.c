@@ -102,7 +102,7 @@ static char doc[] =
 static char args_doc[] = "file1";
 
 static struct argp_option options[] = {
-  {"concurency",  'c', "concurency", 0, "Number of threads" },
+  {"concurrency",  'c', "concurrency", 0, "Number of threads" },
   { 0 }
 };
 
