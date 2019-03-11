@@ -28,6 +28,8 @@ typedef struct {
 # define BENCH_DURATION 10
 #endif
 
+#define TIMESPEC_NS(t) ((t).tv_sec * 1e9 + (t).tv_nsec)
+
 void *wrapper(void *arg) {
 	lua_task *task = (lua_task*)arg;
 	struct timespec start_time;
@@ -41,8 +43,8 @@ void *wrapper(void *arg) {
 		exit(1);
 	}
 
-	uint64_t start_time_ns = start_time.tv_sec * 1e9 +  start_time.tv_nsec;
-	uint64_t cur_time_ns = start_time_ns;
+	uint64_t cur_time_ns = TIMESPEC_NS (start_time);
+	uint64_t stop_time_ns = TIMESPEC_NS (start_time) + BENCH_DURATION * 1e9;
 
 	lua_State *L;
 	L = luaL_newstate();
@@ -58,18 +60,6 @@ void *wrapper(void *arg) {
 
 
 	do {
-		status = clock_gettime(CLOCK_MONOTONIC, &cur_time);
-		if (status != 0) {
-			fprintf(stderr, "clock_gettime failed: %s\n", strerror (errno));
-			exit(1);
-		}
-
-
-		cur_time_ns = cur_time.tv_sec * 1e9 + cur_time.tv_nsec;
-		if (start_time_ns + BENCH_DURATION * 1e9 < cur_time_ns) {
-			break;
-		}
-
 		lua_rawgeti(L, LUA_REGISTRYINDEX, cb_ref);
 		int result = lua_pcall(L, 0, 0, 0);
     		if (result) {
@@ -78,11 +68,17 @@ void *wrapper(void *arg) {
     		}
 
 		ctr++;
+		status = clock_gettime(CLOCK_MONOTONIC, &cur_time);
+		if (status != 0) {
+			fprintf(stderr, "clock_gettime failed: %s\n", strerror (errno));
+			exit(1);
+		}
 
-	} while(1);
+		cur_time_ns = TIMESPEC_NS (cur_time);
+	} while (stop_time_ns > cur_time_ns);;
 
 	task->ctr = ctr;
-	task->start_ns = start_time_ns;
+	task->start_ns = TIMESPEC_NS (start_time);
 	task->end_ns = cur_time_ns;
 
 	return NULL;
